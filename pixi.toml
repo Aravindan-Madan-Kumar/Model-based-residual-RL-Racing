@@ -1,0 +1,72 @@
+[workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "win-64", "osx-arm64"]
+authors = ["Johannes Berger <johannes.berger@dsme.rwth-aachen.de>"]
+name = "rllbc-bpa-3"
+version = "0.1.0"
+description = "Pixi environment for the third bonus point assignment of the RLLBC course."
+
+[dependencies]
+python = "==3.11.11"
+pycairo = "==1.28.0"
+
+[pypi-dependencies]
+box2d = "==2.3.10"
+control = "==0.10.1"
+easydict = "==1.13"
+envkernel = "==1.1.0"
+gitpython = "==3.1.40"
+gymnasium = "==0.29.1"
+ipykernel = "==6.29.5"
+ipympl = "==0.9.7"
+ipywidgets = "==8.1.7"
+jupyterlab = "==3.6.8"
+jupyterlab-git = "==0.44.0"
+jupyterlab-lsp = "==4.3.0"
+matplotlib = "==3.10.3"
+numba = "==0.61.2"
+numpy = "==1.26.4"
+pandas = "==2.2.3"
+pygame = "==2.6.1"
+pyqt6 = "==6.9.0"
+python-lsp-server = "==1.12.2"
+ruamel-yaml = "==0.18.12"
+schedule = "==1.2.1"
+scikit-learn = "==1.6.1"
+screeninfo = "==0.8.1"
+seaborn = "==0.13.2"
+shapely = "==2.1.1"
+stable-baselines3 = "==2.1.0"
+swig = "==4.3.1"
+tensorboard = "==2.19.0"
+torch = "==2.7.0"
+tqdm = "==4.67.1"
+wandb = "==0.20.0"
+
+[target.osx.pypi-dependencies]
+pyobjc-core = "==11.0"
+pyobjc-framework-cocoa = "==11.0"
+cython = "==3.1.1"
+appnope = "==0.1.4"
+
+
+[target.win-64.pypi-dependencies]
+pywin32 = "==310"
+pywinpty = "==2.0.15"
+
+[target.linux-64.pypi-dependencies]
+nvidia-cublas-cu12 = "==12.6.4.1"
+nvidia-cuda-cupti-cu12 = "==12.6.80"
+nvidia-cuda-nvrtc-cu12 = "==12.6.77"
+nvidia-cuda-runtime-cu12 = "==12.6.77"
+nvidia-cudnn-cu12 = "==9.5.1.17"
+nvidia-cufft-cu12 = "==11.3.0.4"
+nvidia-cufile-cu12 = "==1.11.1.6"
+nvidia-curand-cu12 = "==10.3.7.77"
+nvidia-cusolver-cu12 = "==11.7.1.2"
+nvidia-cusparse-cu12 = "==12.5.4.2"
+nvidia-cusparselt-cu12 = "==0.6.3"
+nvidia-nccl-cu12 = "==2.26.2"
+nvidia-nvjitlink-cu12 = "==12.6.85"
+nvidia-nvtx-cu12 = "==12.6.77"
+triton = "==3.3.0"
