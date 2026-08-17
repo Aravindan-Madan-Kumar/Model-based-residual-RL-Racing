@@ -16,9 +16,9 @@ create and use separate scripts.
 Policy mathematics: ``pure_pursuit/controller.py``. Tuning: ``pure_pursuit/tune_es.py``.
 This module defines only the ``Agent`` class and the two conversion functions.
 
-``Agent`` is defined here rather than in the ``pure_pursuit`` package because pickle
-records the defining module of every class it stores, and the evaluation harness imports
-``agent_interface``.
+``Agent`` and ``ResidualAgent`` are defined here rather than in the ``pure_pursuit`` or
+``residual_sac`` packages because pickle records the defining module of every class it
+stores, and the evaluation harness imports ``agent_interface``.
 """
 
 import os
@@ -142,3 +142,106 @@ class Agent(nn.Module):
 
         # Variant for the MLP policy head.
         # return self.forward(obs)
+
+
+class ResidualAgent(nn.Module):
+    """
+    Pure-pursuit controller with a learned residual correction.
+
+    The residual acts on three interpretable quantities rather than on the raw pedals,
+    so a zero residual reproduces :class:`Agent` exactly:
+
+    ==============  =====================================================================
+    ``apex_bias``   lateral shift of the aim point [m], giving a racing line
+    ``speed_bias``  offset on the reference speed [m/s]
+    ``steer_bias``  direct steering correction, covering slip the geometry cannot model
+    ==============  =====================================================================
+
+    The actor is held as a state dict and rebuilt on first use, so pickle records only
+    this class and a dict of CPU tensors. The network class itself stays in
+    ``residual_sac.policy`` and never appears in the saved artifact.
+
+    Stateless with respect to the episode: ``get_action`` is a pure function of the
+    observation.
+
+    :param params: the 10 base controller gains
+    :param actor: a trained ``residual_sac.policy.ResidualActor``
+    :param hidden: hidden width of that actor, needed to rebuild it
+    :param residual_scale: multiplier on residual authority, in [0, 1]
+    """
+
+    def __init__(self, params=None, actor=None, hidden=128, residual_scale=1.0):
+        super().__init__()
+        self.params = np.asarray(DEFAULT_PARAMS if params is None else params,
+                                 dtype=np.float64)
+        self.hidden = int(hidden)
+        self.residual_scale = float(residual_scale)
+        self.actor_state = ({} if actor is None else
+                            {k: v.detach().cpu().clone()
+                             for k, v in actor.state_dict().items()})
+        self._actor = None
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['_actor'] = None
+        return state
+
+    def actor(self):
+        """
+        Rebuild the actor from the stored state dict on first use.
+
+        :return: an evaluation-mode ``ResidualActor`` on CPU
+        """
+        if self._actor is None:
+            from residual_sac.policy import ResidualActor
+            net = ResidualActor(hidden=self.hidden)
+            if self.actor_state:
+                net.load_state_dict(self.actor_state)
+            net.eval()
+            self._actor = net
+        return self._actor
+
+    def residual(self, obs):
+        """
+        Deterministic residual for one observation.
+
+        :param obs: raw 456-dim observation
+        :return: (3,) ndarray in [-1, 1]
+        """
+        import torch
+
+        from residual_sac.features import residual_features
+
+        features = residual_features(obs, self.params)
+        with torch.no_grad():
+            mean, _ = self.actor()(torch.from_numpy(features).unsqueeze(0))
+            return torch.tanh(mean).squeeze(0).numpy()
+
+    def act_from_residual(self, obs, residual):
+        """
+        Apply a residual vector to the geometric controller.
+
+        Shared by :meth:`get_action` and the training rollout so both follow the same
+        path from residual to environment action.
+
+        :param obs: raw 456-dim observation
+        :param residual: (3,) array in [-1, 1]
+        :return: 3-element float32 action
+        """
+        from residual_sac.features import APEX_SCALE, SPEED_SCALE, STEER_SCALE
+
+        scale = self.residual_scale
+        action, _ = pure_pursuit_action(
+            obs, self.params,
+            apex_bias=float(residual[0]) * APEX_SCALE * scale,
+            speed_bias=float(residual[1]) * SPEED_SCALE * scale,
+            steer_bias=float(residual[2]) * STEER_SCALE * scale,
+        )
+        return action
+
+    def get_action(self, obs):
+        """
+        :param obs: the output of :func:`convert_obs`
+        :return: 3-element float32 ndarray, the input to :func:`convert_action`
+        """
+        return self.act_from_residual(obs, self.residual(obs))
