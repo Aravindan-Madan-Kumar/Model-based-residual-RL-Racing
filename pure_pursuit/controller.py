@@ -83,7 +83,8 @@ def centerline_features(obs):
     return cl, s, kappa, np.sign(cross)
 
 
-def pure_pursuit_action(obs, params=DEFAULT_PARAMS):
+def pure_pursuit_action(obs, params=DEFAULT_PARAMS, apex_bias=0.0, speed_bias=0.0,
+                        steer_bias=0.0):
     """
     Compute one control action.
 
@@ -95,6 +96,10 @@ def pure_pursuit_action(obs, params=DEFAULT_PARAMS):
 
     :param obs: raw 456-dim observation
     :param params: 10 gains in the order of :data:`PARAM_NAMES`
+    :param apex_bias: additional lateral shift of the aim point [m], positive to the left
+    :param speed_bias: additional reference speed [m/s]
+    :param steer_bias: additional steering command, in action units, applied before
+        clipping
     :return: ``(action, v_ref)`` with ``action`` = [steering, throttle, brake], each in
         [-1, 1], and ``v_ref`` the reference speed in m/s
     """
@@ -117,21 +122,22 @@ def pure_pursuit_action(obs, params=DEFAULT_PARAMS):
     normal = np.array([-tangent[1], tangent[0]])
     n_norm = np.linalg.norm(normal)
     if n_norm > 1e-6:
-        shift = np.clip(k_in * sgn[j] * kappa[j] * 300.0, -MAX_APEX_SHIFT, MAX_APEX_SHIFT)
+        shift = np.clip(k_in * sgn[j] * kappa[j] * 300.0 + apex_bias,
+                        -MAX_APEX_SHIFT, MAX_APEX_SHIFT)
         target = target + (normal / n_norm) * shift
 
     # --- pure-pursuit steering on the bicycle model ---------------------------------
     dist = max(float(np.linalg.norm(target)), 1e-3)
     alpha = np.arctan2(target[1], target[0])
     delta = np.arctan2(2.0 * WHEELBASE * np.sin(alpha), dist)
-    steer = (delta / MAX_STEER) * ksteer - kdamp * v_lat / max(v, 3.0)
+    steer = (delta / MAX_STEER) * ksteer - kdamp * v_lat / max(v, 3.0) + steer_bias
     steer = float(np.clip(steer, -1.0, 1.0))
 
     # --- speed profile: cornering limit propagated backwards through braking --------
     v_corner = np.sqrt(alat / np.maximum(kappa, 1e-4))
     v_allowed = np.minimum(
         np.sqrt(np.maximum(v_corner ** 2 + 2.0 * abrake * s[1:-1], 0.0)), TOP_SPEED)
-    v_ref = float(min(float(v_allowed.min()), vcap))
+    v_ref = float(np.clip(min(float(v_allowed.min()), vcap) + speed_bias, 0.0, TOP_SPEED))
 
     # --- pedals ---------------------------------------------------------------------
     # Each pedal maps [-1, 1] -> [0, 1] in the environment, so [0, 0, 0] means 50%
