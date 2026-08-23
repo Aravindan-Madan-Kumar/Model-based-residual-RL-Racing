@@ -44,6 +44,5 @@ htmlcov/
 .cache/
 
 notes/
-copy.md
 runs/
 logs/

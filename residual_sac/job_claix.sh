@@ -2,18 +2,15 @@
 #SBATCH --job-name=bpa3-residual-sac
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
-#SBATCH --time=08:00:00
+#SBATCH --partition=c23g
+#SBATCH --time=02:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=24
 #SBATCH --mem=100G
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-15
+#SBATCH --array=0-7
 #
-# Environment setup follows hpc_bpa3_guide/slurm/submit_train_gpu.sh.
-#
-# One array task per seed. Confirm single-seed throughput against the 8 h limit before
-# submitting the full array.
 #
 #   sbatch residual_sac/job_claix.sh
 #   pixi run python residual_sac/select_best.py --runs runs --install
@@ -54,7 +51,7 @@ pixi run python -m py_compile agent_interface.py try_agent.py residual_sac/train
 printf '\n=== Training ===\n'
 pixi run python residual_sac/train.py \
     --seed "${SLURM_ARRAY_TASK_ID}" \
-    --total-timesteps 1000000 \
+    --total-timesteps 600000 \
     --hidden 128 \
     --batch-size 256 \
     --device cuda \
