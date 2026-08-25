@@ -45,4 +45,5 @@ htmlcov/
 
 notes/
 runs/
+runs_extend/
 logs/
