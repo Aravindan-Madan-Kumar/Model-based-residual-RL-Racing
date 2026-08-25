@@ -85,11 +85,6 @@ def _off_sector_brake(c):
     return c
 
 
-def _off_kp_split(c):
-    c[_index('kp_brake')] = c[_index('kp_accel')]
-    return c
-
-
 def _off_ld_curve(c):
     c[_index('k_ld_curve')] = 0.0      # lookahead no longer shortens in corners
     return c
@@ -100,13 +95,12 @@ ABLATIONS = {
     'filter': _off_filter,
     'sector_speed': _off_sector_speed,
     'sector_brake': _off_sector_brake,
-    'kp_split': _off_kp_split,
     'ld_curve': _off_ld_curve,
 }
 
-#                 k_ld  ld0 ldmin ldmax kstr kdmp kpa  kpb  tprv klat kldc salpha vpost
-_TRACKER_LOW = [0.05, 0.0, 2.0, 4.0, 0.50, 0.0, 0.05, 0.05, 0.0, 0.00, 0.0, 0.15, 0.80]
-_TRACKER_HIGH = [1.20, 12.0, 15.0, 45.0, 2.50, 3.0, 3.00, 3.00, 1.5, 0.40, 0.9, 1.00, 1.45]
+#                 k_ld  ld0 ldmin ldmax kstr kdmp  kp  tprv klat kldc salpha vpost
+_TRACKER_LOW = [0.05, 0.0, 2.0, 4.0, 0.50, 0.0, 0.05, 0.0, 0.00, 0.0, 0.15, 0.80]
+_TRACKER_HIGH = [1.20, 12.0, 15.0, 45.0, 2.50, 3.0, 3.00, 1.5, 0.40, 0.9, 1.00, 1.45]
 #                launch_v launch_thr launch_slip
 _LAUNCH_LOW = [0.0, 0.30, 0.20]
 _LAUNCH_HIGH = [14.0, 1.00, 1.00]
@@ -132,8 +126,7 @@ def seed_vector():
         return None
     b = json.load(open(SEED_PATH))
     p = b['params']
-    tracker = [p[0], p[1], p[2], p[3], p[4], p[5],
-               p[6], p[6],          # one speed gain becomes two
+    tracker = [p[0], p[1], p[2], p[3], p[4], p[5], p[6],
                p[8], p[9],
                0.0,                 # no curvature scheduling on the lookahead yet
                1.0,                 # unfiltered steering

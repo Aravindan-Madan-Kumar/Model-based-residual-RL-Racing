@@ -8,14 +8,14 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=48
 #SBATCH --mem=32G
-#SBATCH --array=0-6
+#SBATCH --array=0-5
 #
 # Ablation over the features the sector controller adds on top of the racing-line agent.
 #
 #   sbatch raceline/job_claix_ablation.sh
 #   pixi run python raceline/ablation_report.py
 #
-# Task 0 tunes everything. Tasks 1-6 each neutralise one feature and tune the rest, so
+# Task 0 tunes everything. Tasks 1-5 each neutralise one feature and tune the rest, so
 # the shortfall against task 0 is that feature's contribution. Every variant is seeded
 # from the same 92.235 racing-line agent and uses the same search budget and seed, so the
 # only difference between runs is the feature under test.
@@ -32,8 +32,7 @@ VARIANTS=(
     "filter"          # 2: no steering filter
     "sector_speed"    # 3: one global speed scale instead of per sector
     "sector_brake"    # 4: one global braking limit instead of per sector
-    "kp_split"        # 5: one speed gain for accelerating and braking
-    "ld_curve"        # 6: lookahead no longer shortens through corners
+    "ld_curve"        # 5: lookahead no longer shortens through corners
 )
 DISABLE="${VARIANTS[${SLURM_ARRAY_TASK_ID}]}"
 

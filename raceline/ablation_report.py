@@ -21,7 +21,6 @@ LABELS = {
     'filter': 'steering filter',
     'sector_speed': 'per-sector speed scale',
     'sector_brake': 'per-sector braking limit',
-    'kp_split': 'split accel/brake speed gain',
     'ld_curve': 'curvature-scheduled lookahead',
 }
 

@@ -40,9 +40,7 @@ TRACKER_NAMES = (
     'ldmax',        # lookahead ceiling [m]
     'ksteer',       # steering gain
     'kdamp',        # lateral-slip damping gain
-    'kp_accel',     # speed gain when below the reference
-    'kp_brake',     # speed gain when above it, separate because the car brakes at
-                    # 10.7 m/s^2 but accelerates at 3.4-5.2
+    'kp',           # speed gain
     't_preview',    # speed preview horizon [s]
     'k_lat',        # cross-track correction gain
     'k_ld_curve',   # how much curvature shortens the lookahead, in [0, 1]
@@ -162,7 +160,7 @@ class SectorTracker:
         :return: ``(action, v_ref)``
         """
         tracker, launch, _, _, _ = split_params(params)
-        (k_ld, ld0, ldmin, ldmax, ksteer, kdamp, kp_accel, kp_brake, t_preview,
+        (k_ld, ld0, ldmin, ldmax, ksteer, kdamp, kp, t_preview,
          k_lat, k_ld_curve, steer_alpha, v_post) = tracker
         launch_v, launch_thr, launch_slip = launch
 
@@ -222,9 +220,7 @@ class SectorTracker:
             pedal = launch_thr * (launch_slip if front_slip > 0.5 else 1.0)
             throttle, brake = 1.8 * float(np.clip(pedal, 0.0, 1.0)) - 0.9, -1.0
         else:
-            error = v_ref - v
-            gain = kp_accel if error >= 0.0 else kp_brake
-            u = float(np.clip(gain * error, -1.0, 1.0))
+            u = float(np.clip(kp * (v_ref - v), -1.0, 1.0))
             if u >= 0.0:
                 throttle, brake = 1.8 * u - 0.9, -1.0
             else:
