@@ -245,3 +245,57 @@ class ResidualAgent(nn.Module):
         :return: 3-element float32 ndarray, the input to :func:`convert_action`
         """
         return self.act_from_residual(obs, self.residual(obs))
+
+
+class RacelineAgent(nn.Module):
+    """
+    Follows a precomputed minimum-curvature racing line.
+
+    The line, its arc length, curvature and speed profile are carried inside the object
+    rather than read from disk, so the saved artifact needs no files beyond the modules
+    the harness already imports.
+
+    Stateless with respect to the episode: ``get_action`` is a pure function of the
+    observation.
+
+    :param line: (n, 2) racing line in world coordinates
+    :param s: (n,) cumulative arc length [m]
+    :param speed: (n,) reference speed [m/s]
+    :param kappa: (n,) signed curvature [1/m]
+    :param params: 10 tracker gains, in the order of
+        ``raceline.controller.PARAM_NAMES``
+    """
+
+    def __init__(self, line, s, speed, kappa, params=None):
+        super().__init__()
+        from raceline.controller import DEFAULT_PARAMS as TRACKER_DEFAULTS
+
+        self.line = np.asarray(line, dtype=np.float64)
+        self.s = np.asarray(s, dtype=np.float64)
+        self.speed = np.asarray(speed, dtype=np.float64)
+        self.kappa = np.asarray(kappa, dtype=np.float64)
+        self.params = np.asarray(TRACKER_DEFAULTS if params is None else params,
+                                 dtype=np.float64)
+        self._tracker = None
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['_tracker'] = None
+        return state
+
+    def tracker(self):
+        """
+        :return: a :class:`raceline.controller.RacelineTracker` over the stored line
+        """
+        if self._tracker is None:
+            from raceline.controller import RacelineTracker
+            self._tracker = RacelineTracker(self.line, self.s, self.speed, self.kappa)
+        return self._tracker
+
+    def get_action(self, obs):
+        """
+        :param obs: the output of :func:`convert_obs`
+        :return: 3-element float32 ndarray, the input to :func:`convert_action`
+        """
+        action, _ = self.tracker().action(obs, self.params)
+        return action

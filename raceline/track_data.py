@@ -82,6 +82,17 @@ def extract(n_points=400):
 
     centerline = resample_closed(np.asarray(track['centerline'], dtype=np.float64),
                                  n_points)
+
+    # The stored centerline is wound opposite to the driving direction, which would put
+    # every aim point behind the car. Orient it by the start pose so that increasing
+    # index always means forward.
+    start_xy = np.asarray(track['start_xy'], dtype=np.float64)
+    forward = np.array([np.cos(track['start_theta']), np.sin(track['start_theta'])])
+    i0 = int(np.argmin(np.linalg.norm(centerline - start_xy, axis=1)))
+    tangent = centerline[(i0 + 1) % n_points] - centerline[i0 - 1]
+    if float(forward @ tangent) < 0.0:
+        centerline = centerline[::-1].copy()
+
     normals = closed_normals(centerline)
     seg = np.linalg.norm(np.roll(centerline, -1, axis=0) - centerline, axis=1)
 
