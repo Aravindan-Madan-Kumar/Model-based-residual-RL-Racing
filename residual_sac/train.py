@@ -82,9 +82,87 @@ def parse_args():
     p.add_argument('--autotune', action='store_true', default=True)
     p.add_argument('--no-autotune', dest='autotune', action='store_false')
     p.add_argument('--eval-every', type=int, default=10_000)
+    p.add_argument('--checkpoint-every', type=int, default=25_000)
+    p.add_argument('--resume', action='store_true',
+                   help='continue from ckpt.pt in the run directory if present')
     p.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu')
     p.add_argument('--out-dir', default=os.path.join(REPO_ROOT, 'runs'))
     return p.parse_args()
+
+
+def save_checkpoint(path, step, best_return, baseline, history, nets, opts,
+                    log_alpha, buffer, args):
+    """Full training state, so a later run resumes without a cold critic.
+
+    The actor alone is not enough: restarting with a fresh critic reproduces the
+    collapse the residual penalty exists to prevent.
+    """
+    actor, q1, q2, q1_target, q2_target = nets
+    q_opt, actor_opt, alpha_opt = opts
+    tmp = path + '.tmp'
+    torch.save({'step': step,
+                'best_return': best_return,
+                'baseline': baseline,
+                'history': history,
+                'actor': actor.state_dict(),
+                'q1': q1.state_dict(),
+                'q2': q2.state_dict(),
+                'q1_target': q1_target.state_dict(),
+                'q2_target': q2_target.state_dict(),
+                'q_opt': q_opt.state_dict(),
+                'actor_opt': actor_opt.state_dict(),
+                'alpha_opt': alpha_opt.state_dict(),
+                'log_alpha': log_alpha.detach().cpu(),
+                'buffer': {'size': buffer.size, 'pos': buffer.pos,
+                           'obs': buffer.obs[:buffer.size],
+                           'next_obs': buffer.next_obs[:buffer.size],
+                           'actions': buffer.actions[:buffer.size],
+                           'rewards': buffer.rewards[:buffer.size],
+                           'dones': buffer.dones[:buffer.size]},
+                'torch_rng': torch.get_rng_state(),
+                'cuda_rng': (torch.cuda.get_rng_state_all()
+                             if torch.cuda.is_available() else None),
+                'numpy_rng': np.random.get_state(),
+                'args': vars(args)}, tmp)
+    os.replace(tmp, path)
+
+
+def load_checkpoint(path, device, nets, opts, log_alpha, buffer):
+    """
+    :return: (step, best_return, baseline, history)
+    """
+    ckpt = torch.load(path, map_location=device, weights_only=False)
+    actor, q1, q2, q1_target, q2_target = nets
+    q_opt, actor_opt, alpha_opt = opts
+    actor.load_state_dict(ckpt['actor'])
+    q1.load_state_dict(ckpt['q1'])
+    q2.load_state_dict(ckpt['q2'])
+    q1_target.load_state_dict(ckpt['q1_target'])
+    q2_target.load_state_dict(ckpt['q2_target'])
+    q_opt.load_state_dict(ckpt['q_opt'])
+    actor_opt.load_state_dict(ckpt['actor_opt'])
+    alpha_opt.load_state_dict(ckpt['alpha_opt'])
+    with torch.no_grad():
+        log_alpha.copy_(ckpt['log_alpha'].to(device))
+
+    b = ckpt['buffer']
+    n = int(b['size'])
+    if n > buffer.capacity:
+        raise ValueError(f'checkpoint buffer holds {n} transitions but '
+                         f'--buffer-size is {buffer.capacity}')
+    for name in ('obs', 'next_obs', 'actions', 'rewards', 'dones'):
+        getattr(buffer, name)[:n] = b[name]
+    buffer.size = n
+    buffer.pos = int(b['pos']) % buffer.capacity
+
+    torch.set_rng_state(ckpt['torch_rng'].cpu())
+    cuda_rng = ckpt.get('cuda_rng')
+    if cuda_rng is not None and torch.cuda.is_available() \
+            and len(cuda_rng) == torch.cuda.device_count():
+        torch.cuda.set_rng_state_all([t.cpu() for t in cuda_rng])
+    np.random.set_state(ckpt['numpy_rng'])
+    return (int(ckpt['step']), float(ckpt['best_return']),
+            float(ckpt['baseline']), list(ckpt['history']))
 
 
 def main():
@@ -96,6 +174,7 @@ def main():
     run_dir = os.path.join(args.out_dir, f'seed{args.seed}')
     os.makedirs(run_dir, exist_ok=True)
     best_path = os.path.join(run_dir, 'best.obj')
+    ckpt_path = os.path.join(run_dir, 'ckpt.pt')
 
     params = np.asarray(DEFAULT_PARAMS)
     env, eval_env = make_env(), make_env()
@@ -123,20 +202,33 @@ def main():
         """An agent carrying the actor's current weights, on CPU."""
         return ResidualAgent(params, actor, args.hidden, args.residual_scale)
 
-    baseline = evaluate(eval_env, ResidualAgent(params, None, args.hidden,
-                                                args.residual_scale))
-    print(f"zero-residual baseline: {baseline:.3f}", flush=True)
-    best_return = baseline
-    save_model(snapshot(), best_path)
+    nets = (actor, q1, q2, q1_target, q2_target)
+    opts = (q_opt, actor_opt, alpha_opt)
+    start_step = 0
 
-    history = []
+    if args.resume and os.path.exists(ckpt_path):
+        start_step, best_return, baseline, history = load_checkpoint(
+            ckpt_path, device, nets, opts, log_alpha, buffer)
+        alpha = log_alpha.exp().item()
+        print(f"resumed from {ckpt_path} at step {start_step}, "
+              f"best {best_return:.3f}, buffer {len(buffer)}", flush=True)
+    else:
+        if args.resume:
+            print(f"no checkpoint at {ckpt_path}, starting fresh", flush=True)
+        baseline = evaluate(eval_env, ResidualAgent(params, None, args.hidden,
+                                                    args.residual_scale))
+        print(f"zero-residual baseline: {baseline:.3f}", flush=True)
+        best_return = baseline
+        history = []
+        save_model(snapshot(), best_path)
+
     obs, _ = env.reset()
     features = residual_features(obs, params)
     rollout_agent = snapshot()
     ep_return, ep_len = 0.0, 0
     start = time.time()
 
-    for step in range(args.total_timesteps):
+    for step in range(start_step, args.total_timesteps):
         if step < args.learning_starts:
             residual = np.clip(np.random.normal(0.0, args.warmup_noise, RESIDUAL_DIM),
                                -1.0, 1.0).astype(np.float32)
@@ -211,7 +303,7 @@ def main():
         if (step + 1) % args.eval_every == 0:
             candidate = snapshot()
             score = evaluate(eval_env, candidate)
-            sps = (step + 1) / (time.time() - start)
+            sps = (step + 1 - start_step) / (time.time() - start)
             penalty = args.residual_penalty * max(
                 0.0, 1.0 - step / max(args.penalty_decay_steps, 1))
             print(f"step {step + 1:>8d}  eval {score:7.3f}  best {best_return:7.3f}  "
@@ -220,6 +312,13 @@ def main():
                 best_return = score
                 save_model(candidate, best_path)
             rollout_agent = candidate
+
+        if (step + 1) % args.checkpoint_every == 0:
+            save_checkpoint(ckpt_path, step + 1, best_return, baseline, history,
+                            nets, opts, log_alpha, buffer, args)
+
+    save_checkpoint(ckpt_path, args.total_timesteps, best_return, baseline, history,
+                    nets, opts, log_alpha, buffer, args)
 
     elapsed = time.time() - start
     with open(os.path.join(run_dir, 'summary.json'), 'w') as fh:
