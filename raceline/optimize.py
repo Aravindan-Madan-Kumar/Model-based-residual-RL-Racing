@@ -29,7 +29,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from raceline.track_data import (A_MAX, BRAKE_FORCE, CAR_HALF_WIDTH,  # noqa: E402
+from raceline.track_data import (A_ACCEL, A_BRAKE, A_MAX, CAR_HALF_WIDTH,  # noqa: E402
                                  CONE_OFFSET, ENGINE_POWER, MASS, closed_normals, load)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -99,17 +99,28 @@ def path_curvature(points):
 
 
 def velocity_profile(kappa, ds, a_max=A_MAX, v_max=None, grip_margin=1.0,
-                     power_limited=True, iterations=3):
+                     power_limited=True, iterations=3, a_accel=A_ACCEL,
+                     a_brake=A_BRAKE):
     """
-    Traction-circle limited speed profile for a closed path.
+    Speed profile for a closed path, limited separately in each direction.
+
+    Acceleration and braking are not symmetric on this car. Braking acts on both axles
+    and reaches ``BRAKE_FORCE / MASS``, while acceleration is front-axle limited because
+    the drivetrain is front-wheel drive, so it is roughly a third of that. Using one
+    traction circle for both makes the profile ask for acceleration the car cannot
+    deliver, and the car then trails its own reference for most of the lap.
+
+    Both limits are still derated by how much grip the corner is already using.
 
     :param kappa: (n,) signed curvature [1/m]
     :param ds: (n,) arc length from point i to i+1 [m]
-    :param a_max: traction-circle radius [m/s^2]
+    :param a_max: lateral limit, the traction-circle radius [m/s^2]
     :param v_max: optional hard speed cap [m/s]
     :param grip_margin: fraction of ``a_max`` the profile is allowed to use, in (0, 1]
-    :param power_limited: cap forward acceleration by engine power as well as by grip
+    :param power_limited: also cap acceleration by engine power
     :param iterations: wrap-around passes, needed because the loop is closed
+    :param a_accel: longitudinal acceleration limit at zero lateral load [m/s^2]
+    :param a_brake: braking limit at zero lateral load [m/s^2]
     :return: (n,) speed [m/s]
     """
     a = a_max * grip_margin
@@ -125,15 +136,15 @@ def velocity_profile(kappa, ds, a_max=A_MAX, v_max=None, grip_margin=1.0,
         for i in range(n - 1, -1, -1):
             j = (i + 1) % n
             a_lat = v[j] ** 2 * abs(kappa[j])
-            a_long = np.sqrt(max(a ** 2 - a_lat ** 2, 0.0))
-            a_long = min(a_long, BRAKE_FORCE / MASS)
-            v[i] = min(v[i], np.sqrt(v[j] ** 2 + 2.0 * a_long * ds[i]))
+            free = np.sqrt(max(1.0 - (a_lat / a) ** 2, 0.0))
+            v[i] = min(v[i], np.sqrt(v[j] ** 2 + 2.0 * a_brake * free * ds[i]))
 
-        # Forward pass: accelerate as hard as grip and engine allow.
+        # Forward pass: accelerate as hard as the front axle and engine allow.
         for i in range(n):
             j = (i + 1) % n
             a_lat = v[i] ** 2 * abs(kappa[i])
-            a_long = np.sqrt(max(a ** 2 - a_lat ** 2, 0.0))
+            free = np.sqrt(max(1.0 - (a_lat / a) ** 2, 0.0))
+            a_long = a_accel * free
             if power_limited:
                 a_long = min(a_long, ENGINE_POWER / (MASS * max(v[i], 1.0)))
             v[j] = min(v[j], np.sqrt(v[i] ** 2 + 2.0 * a_long * ds[i]))
@@ -150,7 +161,7 @@ def lap_time(v, ds):
 
 
 def build(corridor=DEFAULT_CORRIDOR, smooth=0.0, grip_margin=1.0, v_max=None,
-          a_max=A_MAX):
+          a_max=A_MAX, a_accel=A_ACCEL, a_brake=A_BRAKE):
     """
     Solve the line and its speed profile for the cached track.
 
@@ -163,12 +174,13 @@ def build(corridor=DEFAULT_CORRIDOR, smooth=0.0, grip_margin=1.0, v_max=None,
     line = centerline + alpha[:, None] * normals
     ds = np.linalg.norm(np.roll(line, -1, axis=0) - line, axis=1)
     kappa = path_curvature(line)
-    v = velocity_profile(kappa, ds, a_max=a_max, v_max=v_max, grip_margin=grip_margin)
+    v = velocity_profile(kappa, ds, a_max=a_max, v_max=v_max, grip_margin=grip_margin,
+                         a_accel=a_accel, a_brake=a_brake)
 
     kappa_c = path_curvature(centerline)
     ds_c = np.linalg.norm(np.roll(centerline, -1, axis=0) - centerline, axis=1)
     v_c = velocity_profile(kappa_c, ds_c, a_max=a_max, v_max=v_max,
-                           grip_margin=grip_margin)
+                           grip_margin=grip_margin, a_accel=a_accel, a_brake=a_brake)
 
     return {
         'line': line,

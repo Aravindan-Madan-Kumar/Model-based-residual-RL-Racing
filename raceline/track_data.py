@@ -29,6 +29,13 @@ GRAVITY = 9.81
 # measured from a rollout rather than derived: the tuned agent sustains 10.3 m/s^2
 # lateral and 11.2 m/s^2 combined. mu*g would be 6.87, which underestimates by a third.
 A_MAX = 10.3
+
+# The car is front-wheel drive, so acceleration is limited by front-axle grip rather than
+# by engine power or by the full traction circle. Measured flat out: 3.79 m/s^2 mean,
+# 5.16 peak, against a front-axle limit of 0.5 * mu * g = 3.43 and an engine limit of
+# 5.71 at 15 m/s. Braking uses both axles and does match BRAKE_FORCE / MASS = 10.7.
+A_ACCEL = 3.8
+A_BRAKE = 10.7
 MASS = 700.0
 ENGINE_POWER = 60_000.0     # W
 BRAKE_FORCE = 7_500.0       # N

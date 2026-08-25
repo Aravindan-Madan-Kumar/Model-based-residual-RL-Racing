@@ -40,20 +40,29 @@ PARAM_NAMES = (
     'k_lat',      # cross-track correction gain, feeding back offset from the line
 )
 
-# Starting point for the tuner. Deliberately conservative on v_scale: the profile is
-# solved for a point mass, so the first evaluation should undershoot rather than slide.
+# Tuned on track00 by raceline/tune_es.py alongside the profile limits below.
 DEFAULT_PARAMS = (
-    0.55,   # k_ld
-    4.0,    # ld0
-    6.0,    # ldmin
-    30.0,   # ldmax
-    1.0,    # ksteer
-    0.5,    # kdamp
-    1.5,    # kp
-    0.95,   # v_scale
-    0.5,    # t_preview
-    0.15,   # k_lat
+    0.647734,   # k_ld
+    5.215461,   # ld0
+    10.579143,   # ldmin
+    25.640879,   # ldmax
+    1.833345,   # ksteer
+    0.175275,   # kdamp
+    0.255345,   # kp
+    1.225286,   # v_scale
+    0.469011,   # t_preview
+    0.037602,   # k_lat
 )
+
+# Profile limits found by the same search. a_brake lands well under the physical 10.7,
+# which reads as the profile preferring to plan an early, gentle brake that the tracker
+# can follow rather than a late one it cannot. The line is solved with SMOOTH weighting
+# because a trackable line beats a theoretically faster one: unsmoothed, the tracker
+# drifts far enough off a minimum-curvature path to lose more than the path gains.
+PROFILE_A_MAX = 10.470762
+PROFILE_A_ACCEL = 4.099279
+PROFILE_A_BRAKE = 6.165923
+PROFILE_SMOOTH = 0.3000
 
 
 class RacelineTracker:
