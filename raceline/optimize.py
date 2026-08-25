@@ -100,7 +100,7 @@ def path_curvature(points):
 
 def velocity_profile(kappa, ds, a_max=A_MAX, v_max=None, grip_margin=1.0,
                      power_limited=True, iterations=3, a_accel=A_ACCEL,
-                     a_brake=A_BRAKE):
+                     a_brake=A_BRAKE, v_scale=1.0):
     """
     Speed profile for a closed path, limited separately in each direction.
 
@@ -119,15 +119,23 @@ def velocity_profile(kappa, ds, a_max=A_MAX, v_max=None, grip_margin=1.0,
     :param grip_margin: fraction of ``a_max`` the profile is allowed to use, in (0, 1]
     :param power_limited: also cap acceleration by engine power
     :param iterations: wrap-around passes, needed because the loop is closed
-    :param a_accel: longitudinal acceleration limit at zero lateral load [m/s^2]
-    :param a_brake: braking limit at zero lateral load [m/s^2]
+    :param a_accel: longitudinal acceleration limit at zero lateral load [m/s^2],
+        scalar or per-point
+    :param a_brake: braking limit at zero lateral load [m/s^2], scalar or per-point
+    :param v_scale: multiplier on the cornering limit, scalar or per-point. Applied
+        before the passes so the profile stays internally consistent: scaling the
+        finished profile would ask for corner speeds the braking schedule never planned
+        for.
     :return: (n,) speed [m/s]
     """
     a = a_max * grip_margin
     n = len(kappa)
+    a_accel = np.broadcast_to(np.asarray(a_accel, dtype=float), (n,))
+    a_brake = np.broadcast_to(np.asarray(a_brake, dtype=float), (n,))
+    v_scale = np.broadcast_to(np.asarray(v_scale, dtype=float), (n,))
 
     # Pure cornering limit: all available grip spent on lateral acceleration.
-    v = np.sqrt(a / np.maximum(np.abs(kappa), 1e-6))
+    v = np.sqrt(a / np.maximum(np.abs(kappa), 1e-6)) * v_scale
     if v_max is not None:
         v = np.minimum(v, v_max)
 
@@ -137,14 +145,14 @@ def velocity_profile(kappa, ds, a_max=A_MAX, v_max=None, grip_margin=1.0,
             j = (i + 1) % n
             a_lat = v[j] ** 2 * abs(kappa[j])
             free = np.sqrt(max(1.0 - (a_lat / a) ** 2, 0.0))
-            v[i] = min(v[i], np.sqrt(v[j] ** 2 + 2.0 * a_brake * free * ds[i]))
+            v[i] = min(v[i], np.sqrt(v[j] ** 2 + 2.0 * a_brake[i] * free * ds[i]))
 
         # Forward pass: accelerate as hard as the front axle and engine allow.
         for i in range(n):
             j = (i + 1) % n
             a_lat = v[i] ** 2 * abs(kappa[i])
             free = np.sqrt(max(1.0 - (a_lat / a) ** 2, 0.0))
-            a_long = a_accel * free
+            a_long = a_accel[i] * free
             if power_limited:
                 a_long = min(a_long, ENGINE_POWER / (MASS * max(v[i], 1.0)))
             v[j] = min(v[j], np.sqrt(v[i] ** 2 + 2.0 * a_long * ds[i]))

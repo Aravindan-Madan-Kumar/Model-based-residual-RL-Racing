@@ -299,3 +299,53 @@ class RacelineAgent(nn.Module):
         """
         action, _ = self.tracker().action(obs, self.params)
         return action
+
+
+class SectorAgent(nn.Module):
+    """
+    Racing-line agent with per-sector speed and braking, a launch mode and a filtered
+    steering command.
+
+    Defined here for the same reason as the other agents: pickle records the defining
+    module of every class it stores and the harness imports ``agent_interface`` alone.
+    Added as a separate class rather than by changing an existing one, so previously
+    saved artifacts stay loadable.
+
+    :param line: (n, 2) racing line in world coordinates
+    :param s: (n,) cumulative arc length [m]
+    :param speed: (n,) reference speed [m/s]
+    :param kappa: (n,) signed curvature [1/m]
+    :param params: the flat parameter vector, in the order of
+        ``raceline.sector.PARAM_NAMES``
+    """
+
+    def __init__(self, line, s, speed, kappa, params):
+        super().__init__()
+        self.line = np.asarray(line, dtype=np.float64)
+        self.s = np.asarray(s, dtype=np.float64)
+        self.speed = np.asarray(speed, dtype=np.float64)
+        self.kappa = np.asarray(kappa, dtype=np.float64)
+        self.params = np.asarray(params, dtype=np.float64)
+        self._tracker = None
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['_tracker'] = None
+        return state
+
+    def tracker(self):
+        """
+        :return: a :class:`raceline.sector.SectorTracker` over the stored line
+        """
+        if self._tracker is None:
+            from raceline.sector import SectorTracker
+            self._tracker = SectorTracker(self.line, self.s, self.speed, self.kappa)
+        return self._tracker
+
+    def get_action(self, obs):
+        """
+        :param obs: the output of :func:`convert_obs`
+        :return: 3-element float32 ndarray, the input to :func:`convert_action`
+        """
+        action, _ = self.tracker().action(obs, self.params)
+        return action
