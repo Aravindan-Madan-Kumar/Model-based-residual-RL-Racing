@@ -233,12 +233,15 @@ class SectorTracker:
         return np.array([steer, throttle, brake], dtype=np.float32), v_ref
 
 
-def build_profile(params, corridor=None):
+def build_profile(params, corridor=None, lines=None):
     """
     Solve the line and its per-sector speed profile for one parameter vector.
 
     :param params: the full flat parameter vector
     :param corridor: corridor half-width [m], defaulting to the cone-clearing value
+    :param lines: optional dict used to cache solved lines by smoothing weight. Only the
+        smoothing weight changes the line, and solving it is a least-squares problem over
+        every track point, so reusing it across candidates is most of the run time.
     :return: dict with ``line``, ``s``, ``speed`` and ``kappa``
     """
     from raceline.optimize import DEFAULT_CORRIDOR, build, velocity_profile
@@ -246,8 +249,14 @@ def build_profile(params, corridor=None):
     _, _, profile, v_scale, a_brake = split_params(params)
     a_max, a_accel, smooth = profile
 
-    line = build(corridor=DEFAULT_CORRIDOR if corridor is None else corridor,
-                 smooth=float(smooth))
+    corridor = DEFAULT_CORRIDOR if corridor is None else corridor
+    key = (round(float(smooth), 4), round(float(corridor), 4))
+    if lines is None:
+        line = build(corridor=corridor, smooth=float(smooth))
+    else:
+        if key not in lines:
+            lines[key] = build(corridor=corridor, smooth=float(smooth))
+        line = lines[key]
     total_s = float(line['s'][-1] + line['ds'][-1])
     speed = velocity_profile(
         line['kappa'], line['ds'], a_max=float(a_max), a_accel=float(a_accel),

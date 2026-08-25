@@ -40,9 +40,69 @@ BEST_PATH = os.path.join(HERE, 'best_sector.json')
 SEED_PATH = os.path.join(HERE, 'best_params.json')
 
 # Only the smoothing weight is quantised, because it is the one parameter that changes
-# the line and so triggers a least-squares solve.
+# the line and so triggers a least-squares solve. The index is looked up rather than
+# written down: hard-coding it once already pointed at the wrong parameter, which
+# silently disabled the line cache.
 SMOOTH_STEP = 0.05
-SMOOTH_INDEX = 15
+SMOOTH_INDEX = PARAM_NAMES.index('smooth')
+
+
+def _index(name):
+    """
+    :param name: entry of :data:`raceline.sector.PARAM_NAMES`
+    :return: its position in the flat parameter vector
+    """
+    return PARAM_NAMES.index(name)
+
+
+# Each ablation pins one feature to its neutral setting and lets everything else tune, so
+# the drop against the full search is that feature's contribution. Features that exist to
+# vary a quantity per sector are neutralised by tying the sectors together rather than by
+# freezing them, which removes the per-sector freedom without also removing the global
+# quantity.
+def _off_launch(c):
+    c[_index('launch_v')] = 0.0        # below this speed never triggers
+    c[_index('launch_thr')] = 1.0
+    c[_index('launch_slip')] = 1.0
+    return c
+
+
+def _off_filter(c):
+    c[_index('steer_alpha')] = 1.0     # command passes straight through
+    return c
+
+
+def _off_sector_speed(c):
+    # v_post still scales speed globally, so only the per-sector freedom is removed.
+    i = _index('v_scale0')
+    c[i:i + N_SECTORS] = 1.0
+    return c
+
+
+def _off_sector_brake(c):
+    i = _index('a_brake0')
+    c[i:i + N_SECTORS] = c[i]          # one global braking limit, still tuned
+    return c
+
+
+def _off_kp_split(c):
+    c[_index('kp_brake')] = c[_index('kp_accel')]
+    return c
+
+
+def _off_ld_curve(c):
+    c[_index('k_ld_curve')] = 0.0      # lookahead no longer shortens in corners
+    return c
+
+
+ABLATIONS = {
+    'launch': _off_launch,
+    'filter': _off_filter,
+    'sector_speed': _off_sector_speed,
+    'sector_brake': _off_sector_brake,
+    'kp_split': _off_kp_split,
+    'ld_curve': _off_ld_curve,
+}
 
 #                 k_ld  ld0 ldmin ldmax kstr kdmp kpa  kpb  tprv klat kldc salpha vpost
 _TRACKER_LOW = [0.05, 0.0, 2.0, 4.0, 0.50, 0.0, 0.05, 0.05, 0.0, 0.00, 0.0, 0.15, 0.80]
@@ -87,31 +147,43 @@ def seed_vector():
                             + [b['a_brake']] * N_SECTORS), LOW, HIGH)
 
 
-def _quantise(candidate):
-    """Round the smoothing weight so the line cache stays small."""
+def project(candidate, disabled=()):
+    """
+    Round the smoothing weight and apply any ablation constraints.
+
+    Applied everywhere a candidate is used, so a disabled feature cannot creep back in
+    through the seed, the reported best, or the saved parameters.
+
+    :param disabled: names of features to neutralise, keys of :data:`ABLATIONS`
+    :return: a projected copy
+    """
     c = np.array(candidate, dtype=float)
     c[SMOOTH_INDEX] = round(c[SMOOTH_INDEX] / SMOOTH_STEP) * SMOOTH_STEP
+    for name in disabled:
+        c = ABLATIONS[name](c)
     return c
 
 
 def _worker_state():
-    """One environment and a cache of profiles per worker process."""
+    """One environment and a cache of solved lines per worker process."""
     global _STATE
     if _STATE is None:
         from pure_pursuit.rollout import make_env
-        _STATE = {'env': make_env()}
+        _STATE = {'env': make_env(), 'lines': {}}
     return _STATE
 
 
-def rollout_score(env, candidate):
+def rollout_score(env, candidate, disabled=(), lines=None):
     """
     :param candidate: a full parameter vector
+    :param disabled: names of features to neutralise
+    :param lines: optional cache of solved lines, keyed by smoothing weight
     :return: episodic return
     """
     from agent_interface import convert_action, convert_obs
 
-    params = _quantise(candidate)
-    profile = build_profile(params)
+    params = project(candidate, disabled)
+    profile = build_profile(params, lines=lines)
     tracker = SectorTracker(profile['line'], profile['s'], profile['speed'],
                             profile['kappa'])
 
@@ -125,18 +197,21 @@ def rollout_score(env, candidate):
     return total
 
 
-def _evaluate_batch(candidates):
+def _evaluate_batch(payload):
     """
-    :param candidates: parameter vectors as plain lists
+    :param payload: ``(candidates, disabled)``, plain types so it pickles cheaply
     :return: list of episodic returns
     """
-    env = _worker_state()['env']
-    return [rollout_score(env, c) for c in candidates]
+    candidates, disabled = payload
+    state = _worker_state()
+    return [rollout_score(state['env'], c, disabled, state['lines'])
+            for c in candidates]
 
 
-def _map_population(pool, population, workers):
+def _map_population(pool, population, workers, disabled=()):
     """Evaluate a population across the worker pool, preserving order."""
-    chunks = [[c.tolist() for c in population[i::workers]] for i in range(workers)]
+    chunks = [([c.tolist() for c in population[i::workers]], tuple(disabled))
+              for i in range(workers)]
     results = pool.map(_evaluate_batch, chunks)
     fitness = np.empty(len(population))
     for i in range(workers):
@@ -144,7 +219,7 @@ def _map_population(pool, population, workers):
     return fitness
 
 
-def random_search(pool, n, workers, rng, seed_point):
+def random_search(pool, n, workers, rng, seed_point, disabled=()):
     """
     Sample around the seed rather than uniformly over the box.
 
@@ -157,12 +232,13 @@ def random_search(pool, n, workers, rng, seed_point):
     population = [seed_point.copy()]
     population += [np.clip(seed_point + span * rng.standard_normal(len(LOW)), LOW, HIGH)
                    for _ in range(n - 1)]
-    fitness = _map_population(pool, population, workers)
+    fitness = _map_population(pool, population, workers, disabled)
     best = int(np.argmax(fitness))
     return population[best], float(fitness[best])
 
 
-def evolution_strategy(pool, mean, generations, workers, rng, lam=20, mu=6):
+def evolution_strategy(pool, mean, generations, workers, rng, lam=20, mu=6,
+                       disabled=()):
     """
     :return: (best parameter vector, its return, per-generation history)
     """
@@ -177,7 +253,7 @@ def evolution_strategy(pool, mean, generations, workers, rng, lam=20, mu=6):
                       for _ in range(lam)]
         population[0] = mean.copy()
 
-        fitness = _map_population(pool, population, workers)
+        fitness = _map_population(pool, population, workers, disabled)
         order = np.argsort(-fitness)
         elite = np.array([population[i] for i in order[:mu]])
 
@@ -205,37 +281,55 @@ def parse_args():
     p.add_argument('--generations', type=int, default=60)
     p.add_argument('--workers', type=int, default=4)
     p.add_argument('--seed', type=int, default=5)
-    p.add_argument('--out', default=BEST_PATH)
+    p.add_argument('--out', default=None)
+    p.add_argument('--disable', default='',
+                   help='comma-separated features to neutralise, one of '
+                        + ', '.join(ABLATIONS) + '; empty means the full search')
     return p.parse_args()
 
 
 def main():
     args = parse_args()
+    disabled = tuple(n for n in args.disable.split(',') if n)
+    unknown = [n for n in disabled if n not in ABLATIONS]
+    if unknown:
+        raise SystemExit(f"unknown features {unknown}, expected any of {list(ABLATIONS)}")
+
+    tag = 'full' if not disabled else 'no_' + '_'.join(disabled)
+    out = args.out or os.path.join(HERE, f'best_sector_{tag}.json')
+
     rng = np.random.default_rng(args.seed)
     start = time.time()
 
     seed_point = seed_vector()
     if seed_point is None:
         raise SystemExit(f"no seed at {SEED_PATH}, run raceline/tune_es.py first")
+    seed_point = project(seed_point, disabled)
+
+    print(f"variant: {tag}"
+          + (f"  (disabled: {', '.join(disabled)})" if disabled else ''))
 
     with mp.Pool(args.workers) as pool:
         print(f"phase 1: {args.random} samples around the seed")
-        x0, f0 = random_search(pool, args.random, args.workers, rng, seed_point)
+        x0, f0 = random_search(pool, args.random, args.workers, rng, seed_point,
+                               disabled)
         print(f"  best sampled return = {f0:.3f}  ({time.time() - start:.0f}s)\n")
 
         print(f"phase 2: (mu, lambda) ES, {args.generations} generations")
         best_x, best_f, history = evolution_strategy(
-            pool, x0, args.generations, args.workers, rng)
+            pool, x0, args.generations, args.workers, rng, disabled=disabled)
 
-    best_x = _quantise(best_x)
+    best_x = project(best_x, disabled)
     elapsed = time.time() - start
     print(f"\nbest return = {best_f:.4f}  wall = {elapsed:.0f}s")
     for name, value in zip(PARAM_NAMES, best_x):
         print(f"  {name:12s} = {value:.6f}")
 
-    with open(args.out, 'w') as fh:
+    with open(out, 'w') as fh:
         json.dump({'params': best_x.tolist(),
                    'names': list(PARAM_NAMES),
+                   'variant': tag,
+                   'disabled': list(disabled),
                    'return': best_f,
                    'seed_return': f0,
                    'random_samples': args.random,
@@ -243,7 +337,7 @@ def main():
                    'seed': args.seed,
                    'wall_seconds': elapsed,
                    'history': history}, fh, indent=2)
-    print(f"wrote {args.out}")
+    print(f"wrote {out}")
 
 
 if __name__ == '__main__':
