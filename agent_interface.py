@@ -13,7 +13,7 @@ create and use separate scripts.
 
 ---
 
-Policy mathematics: ``pure_pursuit/controller.py``. Tuning: ``pure_pursuit/tune_es.py``.
+Policy mathematics: ``pure_pursuit/controller.py``. Tuning: ``pure_pursuit/scripts/tune_es.py``.
 This module defines only the ``Agent`` class and the two conversion functions.
 
 ``Agent`` and ``ResidualAgent`` are defined here rather than in the ``pure_pursuit`` or
@@ -236,6 +236,261 @@ class ResidualAgent(nn.Module):
             apex_bias=float(residual[0]) * APEX_SCALE * scale,
             speed_bias=float(residual[1]) * SPEED_SCALE * scale,
             steer_bias=float(residual[2]) * STEER_SCALE * scale,
+        )
+        return action
+
+    def get_action(self, obs):
+        """
+        :param obs: the output of :func:`convert_obs`
+        :return: 3-element float32 ndarray, the input to :func:`convert_action`
+        """
+        return self.act_from_residual(obs, self.residual(obs))
+
+
+class RacelineAgent(nn.Module):
+    """
+    Follows a precomputed minimum-curvature racing line.
+
+    The line, its arc length, curvature and speed profile are carried inside the object
+    rather than read from disk, so the saved artifact needs no files beyond the modules
+    the harness already imports.
+
+    Stateless with respect to the episode: ``get_action`` is a pure function of the
+    observation.
+
+    :param line: (n, 2) racing line in world coordinates
+    :param s: (n,) cumulative arc length [m]
+    :param speed: (n,) reference speed [m/s]
+    :param kappa: (n,) signed curvature [1/m]
+    :param params: 10 tracker gains, in the order of
+        ``raceline.controller.PARAM_NAMES``
+    """
+
+    def __init__(self, line, s, speed, kappa, params=None):
+        super().__init__()
+        from raceline.controller import DEFAULT_PARAMS as TRACKER_DEFAULTS
+
+        self.line = np.asarray(line, dtype=np.float64)
+        self.s = np.asarray(s, dtype=np.float64)
+        self.speed = np.asarray(speed, dtype=np.float64)
+        self.kappa = np.asarray(kappa, dtype=np.float64)
+        self.params = np.asarray(TRACKER_DEFAULTS if params is None else params,
+                                 dtype=np.float64)
+        self._tracker = None
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['_tracker'] = None
+        return state
+
+    def tracker(self):
+        """
+        :return: a :class:`raceline.controller.RacelineTracker` over the stored line
+        """
+        if self._tracker is None:
+            from raceline.controller import RacelineTracker
+            self._tracker = RacelineTracker(self.line, self.s, self.speed, self.kappa)
+        return self._tracker
+
+    def get_action(self, obs):
+        """
+        :param obs: the output of :func:`convert_obs`
+        :return: 3-element float32 ndarray, the input to :func:`convert_action`
+        """
+        action, _ = self.tracker().action(obs, self.params)
+        return action
+
+
+class SectorAgent(nn.Module):
+    """
+    Racing-line agent with per-sector speed and braking, a launch mode and a filtered
+    steering command.
+
+    Defined here for the same reason as the other agents: pickle records the defining
+    module of every class it stores and the harness imports ``agent_interface`` alone.
+    Added as a separate class rather than by changing an existing one, so previously
+    saved artifacts stay loadable.
+
+    :param line: (n, 2) racing line in world coordinates
+    :param s: (n,) cumulative arc length [m]
+    :param speed: (n,) reference speed [m/s]
+    :param kappa: (n,) signed curvature [1/m]
+    :param params: the flat parameter vector, in the order of
+        ``raceline.sector.PARAM_NAMES``
+    """
+
+    def __init__(self, line, s, speed, kappa, params):
+        super().__init__()
+        self.line = np.asarray(line, dtype=np.float64)
+        self.s = np.asarray(s, dtype=np.float64)
+        self.speed = np.asarray(speed, dtype=np.float64)
+        self.kappa = np.asarray(kappa, dtype=np.float64)
+        self.params = np.asarray(params, dtype=np.float64)
+        self._tracker = None
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['_tracker'] = None
+        return state
+
+    def tracker(self):
+        """
+        :return: a :class:`raceline.sector.SectorTracker` over the stored line
+        """
+        if self._tracker is None:
+            from raceline.sector import SectorTracker
+            self._tracker = SectorTracker(self.line, self.s, self.speed, self.kappa)
+        return self._tracker
+
+    def get_action(self, obs):
+        """
+        :param obs: the output of :func:`convert_obs`
+        :return: 3-element float32 ndarray, the input to :func:`convert_action`
+        """
+        action, _ = self.tracker().action(obs, self.params)
+        return action
+
+
+class SectorResidualAgent(nn.Module):
+    """
+    Sector racing-line controller with a learned residual correction.
+
+    The residual acts on interpretable channels rather than on the raw pedals, so a zero
+    residual reproduces :class:`SectorAgent` exactly:
+
+    ==============  =====================================================================
+    ``speed_bias``  offset on the reference speed [m/s]
+    ``steer_bias``  steering correction, applied before the controller's own filter
+    ``apex_bias``   lateral shift of the aim point [m], third channel only
+    ==============  =====================================================================
+
+    Two channels is the default because the line's shape is already searched through the
+    smoothing weight and the corridor, and the measured failure mode is tracking error
+    rather than path geometry, so a channel that moves the line sideways risks adding
+    drift without addressing the binding constraint. It is an option rather than a
+    prohibition: ``channels=3`` restores the lateral shift, and whether it earns its
+    place is decided by the score of the run, not by this argument.
+
+    Defined here for the same reason as the other agents: pickle records the defining
+    module of every class it stores and the harness imports ``agent_interface`` alone.
+    The actor is held as a state dict of CPU tensors and rebuilt on first use, so the
+    network class never enters the pickle and no CUDA storage can.
+
+    Stateless with respect to the episode: ``get_action`` is a pure function of the
+    observation.
+
+    :param line: (n, 2) racing line in world coordinates
+    :param s: (n,) cumulative arc length [m]
+    :param speed: (n,) reference speed [m/s]
+    :param kappa: (n,) signed curvature [1/m]
+    :param params: flat parameter vector, in the order of ``raceline.sector.PARAM_NAMES``
+    :param actor: a trained ``residual_sac.policy.ResidualActor``, or None for the
+        zero residual
+    :param hidden: hidden width of that actor, needed to rebuild it
+    :param residual_scale: multiplier on residual authority, in [0, 1]
+    :param channels: 2 for speed and steering, 3 to add the lateral aim-point shift.
+        Read through ``getattr`` so artifacts saved before the option existed still load.
+    """
+
+    def __init__(self, line, s, speed, kappa, params, actor=None, hidden=128,
+                 residual_scale=1.0, channels=2):
+        super().__init__()
+        self.line = np.asarray(line, dtype=np.float64)
+        self.s = np.asarray(s, dtype=np.float64)
+        self.speed = np.asarray(speed, dtype=np.float64)
+        self.kappa = np.asarray(kappa, dtype=np.float64)
+        self.params = np.asarray(params, dtype=np.float64)
+        self.hidden = int(hidden)
+        self.residual_scale = float(residual_scale)
+        self.channels = int(channels)
+        self.actor_state = ({} if actor is None else
+                            {k: v.detach().cpu().clone()
+                             for k, v in actor.state_dict().items()})
+        self._tracker = None
+        self._actor = None
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['_tracker'] = None
+        state['_actor'] = None
+        return state
+
+    def tracker(self):
+        """
+        :return: a :class:`raceline.sector.SectorTracker` over the stored line
+        """
+        if self._tracker is None:
+            from raceline.sector import SectorTracker
+            self._tracker = SectorTracker(self.line, self.s, self.speed, self.kappa)
+        return self._tracker
+
+    def n_channels(self):
+        """
+        :return: the residual width, defaulting to 2 for artifacts saved before the
+            third channel existed
+        """
+        return int(getattr(self, 'channels', 2))
+
+    def actor(self):
+        """
+        Rebuild the actor from the stored state dict on first use.
+
+        :return: an evaluation-mode ``ResidualActor`` on CPU, or None if untrained
+        """
+        if not self.actor_state:
+            return None
+        if self._actor is None:
+            from residual_sac.features_sector import FEATURE_DIM
+            from residual_sac.policy import ResidualActor
+            net = ResidualActor(FEATURE_DIM, self.hidden, self.n_channels())
+            net.load_state_dict(self.actor_state)
+            net.eval()
+            self._actor = net
+        return self._actor
+
+    def residual(self, obs):
+        """
+        Deterministic residual for one observation.
+
+        :param obs: raw 456-dim observation
+        :return: (2,) ndarray in [-1, 1], zero when the agent carries no actor
+        """
+        import torch
+
+        from residual_sac.features_sector import residual_features
+
+        net = self.actor()
+        if net is None:
+            return np.zeros(self.n_channels(), dtype=np.float32)
+
+        features = residual_features(obs, self.tracker(), self.params)
+        with torch.no_grad():
+            mean, _ = net(torch.from_numpy(features).unsqueeze(0))
+            return torch.tanh(mean).squeeze(0).numpy()
+
+    def act_from_residual(self, obs, residual):
+        """
+        Apply a residual vector to the sector controller.
+
+        Shared by :meth:`get_action` and the training rollout so both follow the same
+        path from residual to environment action.
+
+        :param obs: raw 456-dim observation
+        :param residual: array in [-1, 1], ordered ``(speed, steering)``, with an
+            additional lateral aim-point shift when the agent carries three channels
+        :return: 3-element float32 action
+        """
+        from residual_sac.features_sector import (APEX_SCALE, SPEED_SCALE,
+                                                  STEER_SCALE)
+
+        scale = self.residual_scale
+        apex = (float(residual[2]) * APEX_SCALE * scale
+                if self.n_channels() == 3 else 0.0)
+        action, _ = self.tracker().action(
+            obs, self.params,
+            apex_bias=apex,
+            speed_bias=float(residual[0]) * SPEED_SCALE * scale,
+            steer_bias=float(residual[1]) * STEER_SCALE * scale,
         )
         return action
 

@@ -28,7 +28,7 @@ def make_env():
 
     Bypasses ``util.create_env`` because its ``RecordEpisodeStatistics`` wrapper and
     eager reset cost time across tens of thousands of rollouts. Environment, physics and
-    reward are identical; final scoring in :mod:`pure_pursuit.evaluate` goes through
+    reward are identical; final scoring in :mod:`pure_pursuit.scripts.evaluate` goes through
     ``util.create_env``.
 
     :return: the racing environment

@@ -14,7 +14,7 @@ the scalar return of a full 600-step episode.
 
 Usage::
 
-    pixi run python pure_pursuit/tune_es.py --random 220 --generations 18 --workers 4
+    pixi run python pure_pursuit/scripts/tune_es.py --random 220 --generations 18 --workers 4
 """
 
 import argparse
@@ -26,15 +26,15 @@ import time
 
 import numpy as np
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from pure_pursuit.controller import PARAM_NAMES  # noqa: E402
 from pure_pursuit.rollout import make_env, score  # noqa: E402
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-BEST_PATH = os.path.join(HERE, 'best_params.json')
+MODULE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BEST_PATH = os.path.join(MODULE_DIR, 'best_params.json')
 
 # Search box. Bounds are physical: alat/abrake around the 0.7 g friction limit, vcap up
 # to just under top speed, lookahead on the scale of the 60 m centerline horizon.
@@ -166,7 +166,7 @@ def main():
                    'history': history}, fh, indent=2)
     print(f"wrote {args.out}")
     print("\nNow update DEFAULT_PARAMS in pure_pursuit/controller.py, then run:")
-    print("  pixi run python pure_pursuit/evaluate.py --save")
+    print("  pixi run python pure_pursuit/scripts/evaluate.py --save")
 
 
 if __name__ == '__main__':

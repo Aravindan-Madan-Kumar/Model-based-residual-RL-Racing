@@ -12,8 +12,8 @@
 #SBATCH --array=0-7
 #
 #
-#   sbatch residual_sac/job_claix.sh
-#   pixi run python residual_sac/select_best.py --runs runs --install
+#   sbatch residual_sac/slurm/job_claix.sh
+#   pixi run python residual_sac/scripts/select_best.py --runs runs --install
 
 set -euo pipefail
 
@@ -46,10 +46,10 @@ nvidia-smi || true
 pixi run python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())"
 
 printf '\n=== Pre-flight checks ===\n'
-pixi run python -m py_compile agent_interface.py try_agent.py residual_sac/train.py
+pixi run python -m py_compile agent_interface.py try_agent.py residual_sac/scripts/train.py
 
 printf '\n=== Training ===\n'
-pixi run python residual_sac/train.py \
+pixi run python residual_sac/scripts/train.py \
     --seed "${SLURM_ARRAY_TASK_ID}" \
     --total-timesteps 600000 \
     --hidden 128 \
