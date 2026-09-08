@@ -61,11 +61,58 @@ LAUNCH_NAMES = (
 PROFILE_NAMES = ('a_max', 'a_accel', 'smooth')
 SECTOR_NAMES = (tuple(f'v_scale{i}' for i in range(N_SECTORS))
                 + tuple(f'a_brake{i}' for i in range(N_SECTORS)))
-PARAM_NAMES = TRACKER_NAMES + LAUNCH_NAMES + PROFILE_NAMES + SECTOR_NAMES
+# Appended rather than grouped with the other line parameters so that every vector
+# saved before it existed keeps its meaning: the entries ahead of it do not move, and a
+# 34-long vector still parses, taking the default corridor.
+LINE_NAMES = ('corridor',)
+PARAM_NAMES = (TRACKER_NAMES + LAUNCH_NAMES + PROFILE_NAMES + SECTOR_NAMES
+               + LINE_NAMES)
 
 N_TRACKER = len(TRACKER_NAMES)
 N_LAUNCH = len(LAUNCH_NAMES)
 N_PROFILE = len(PROFILE_NAMES)
+
+
+# Tuned on the fixed evaluation track by ``raceline/tune_sector.py``. Selected from the
+# ablation array: the curvature-scheduled lookahead was the one feature whose removal
+# improved the search, so ``k_ld_curve`` is held at zero here.
+DEFAULT_PARAMS = (
+    0.5902074045551793,  # k_ld
+    8.660800540219363,  # ld0
+    13.92478512941865,  # ldmin
+    30.64828569457289,  # ldmax
+    1.8315903168304664,  # ksteer
+    0.5397049682693887,  # kdamp
+    0.20228702799822995,  # kp
+    0.5590578956990476,  # t_preview
+    0.009485811956890655,  # k_lat
+    0.06848112627796096,  # k_ld_curve
+    0.9385910561517474,  # steer_alpha
+    1.2529614553875328,  # v_post
+    1.4154732393753358,  # launch_v
+    0.8711653877303234,  # launch_thr
+    0.9624558205738618,  # launch_slip
+    11.364672385400269,  # a_max
+    3.5281189577668832,  # a_accel
+    0.1,  # smooth
+    1.0346752320445483,  # v_scale0
+    1.0832121166540891,  # v_scale1
+    1.0493815250651157,  # v_scale2
+    1.1371682690362357,  # v_scale3
+    1.0654336905719088,  # v_scale4
+    0.948127305835942,  # v_scale5
+    0.8236770698092355,  # v_scale6
+    1.1576888314079268,  # v_scale7
+    5.759098514332578,  # a_brake0
+    6.474887348741953,  # a_brake1
+    7.432930662351884,  # a_brake2
+    7.226059471001468,  # a_brake3
+    6.388919662964714,  # a_brake4
+    7.175226612725322,  # a_brake5
+    6.079018783036621,  # a_brake6
+    6.336811513318885,  # a_brake7
+    2.5,  # corridor
+)
 
 
 def sector_curve(values, s, total_s):
@@ -94,14 +141,17 @@ def sector_curve(values, s, total_s):
 def split_params(params):
     """
     :param params: the full flat parameter vector
-    :return: ``(tracker, launch, profile, v_scale, a_brake)``
+    :return: ``(tracker, launch, profile, v_scale, a_brake, corridor)``, the corridor
+        being ``None`` for a vector saved before it became a search dimension
     """
     params = np.asarray(params, dtype=float)
     i = N_TRACKER
     j = i + N_LAUNCH
     k = j + N_PROFILE
+    n = k + 2 * N_SECTORS
+    corridor = float(params[n]) if len(params) > n else None
     return (params[:i], params[i:j], params[j:k],
-            params[k:k + N_SECTORS], params[k + N_SECTORS:k + 2 * N_SECTORS])
+            params[k:k + N_SECTORS], params[k + N_SECTORS:n], corridor)
 
 
 class SectorTracker:
@@ -159,7 +209,7 @@ class SectorTracker:
         :param steer_bias: additional steering command, before filtering and clipping
         :return: ``(action, v_ref)``
         """
-        tracker, launch, _, _, _ = split_params(params)
+        tracker, launch, _, _, _, _ = split_params(params)
         (k_ld, ld0, ldmin, ldmax, ksteer, kdamp, kp, t_preview,
          k_lat, k_ld_curve, steer_alpha, v_post) = tracker
         launch_v, launch_thr, launch_slip = launch
@@ -234,7 +284,8 @@ def build_profile(params, corridor=None, lines=None):
     Solve the line and its per-sector speed profile for one parameter vector.
 
     :param params: the full flat parameter vector
-    :param corridor: corridor half-width [m], defaulting to the cone-clearing value
+    :param corridor: corridor half-width [m], overriding the value carried in
+        ``params`` and defaulting to the cone-clearing value
     :param lines: optional dict used to cache solved lines by smoothing weight. Only the
         smoothing weight changes the line, and solving it is a least-squares problem over
         every track point, so reusing it across candidates is most of the run time.
@@ -242,10 +293,11 @@ def build_profile(params, corridor=None, lines=None):
     """
     from raceline.optimize import DEFAULT_CORRIDOR, build, velocity_profile
 
-    _, _, profile, v_scale, a_brake = split_params(params)
+    _, _, profile, v_scale, a_brake, from_params = split_params(params)
     a_max, a_accel, smooth = profile
 
-    corridor = DEFAULT_CORRIDOR if corridor is None else corridor
+    if corridor is None:
+        corridor = DEFAULT_CORRIDOR if from_params is None else from_params
     key = (round(float(smooth), 4), round(float(corridor), 4))
     if lines is None:
         line = build(corridor=corridor, smooth=float(smooth))
