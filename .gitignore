@@ -47,3 +47,9 @@ notes/
 runs/
 logs/
 runs_extend/
+runs_sector/
+runs_sector_cpu/
+
+# black-box search outputs, the winning parameters live in the module defaults
+raceline/best_line_seed*.json
+raceline/best_sector_*.json
