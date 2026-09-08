@@ -20,7 +20,8 @@ if REPO_ROOT not in sys.path:
 os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
 os.environ.setdefault('MPLBACKEND', 'Agg')
 
-from agent_interface import RacelineAgent, convert_action, convert_obs  # noqa: E402
+from agent_interface import (RacelineAgent, SectorAgent, convert_action,  # noqa: E402
+                             convert_obs)
 from raceline.controller import (DEFAULT_PARAMS, PROFILE_A_ACCEL,  # noqa: E402
                                  PROFILE_A_BRAKE, PROFILE_A_MAX, PROFILE_SMOOTH)
 from raceline.optimize import build, velocity_profile  # noqa: E402
@@ -38,6 +39,21 @@ def make_agent():
                              a_accel=PROFILE_A_ACCEL, a_brake=PROFILE_A_BRAKE)
     return RacelineAgent(line['line'], line['s'], speed, line['kappa'],
                          np.asarray(DEFAULT_PARAMS))
+
+
+def make_sector_agent():
+    """
+    :return: a :class:`agent_interface.SectorAgent` on the tuned sector parameters
+    """
+    from raceline.sector import DEFAULT_PARAMS as SECTOR_DEFAULTS, build_profile
+
+    params = np.asarray(SECTOR_DEFAULTS)
+    profile = build_profile(params)
+    return SectorAgent(profile['line'], profile['s'], profile['speed'],
+                       profile['kappa'], params)
+
+
+BUILDERS = {'raceline': make_agent, 'sector': make_sector_agent}
 
 
 def grader_score(model, env, episodes=3):
@@ -88,16 +104,17 @@ def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--save', action='store_true', help='write models/model.obj')
     p.add_argument('--episodes', type=int, default=3)
+    p.add_argument('--agent', choices=sorted(BUILDERS), default='sector')
     return p.parse_args()
 
 
 def main():
     args = parse_args()
-    agent = make_agent()
+    agent = BUILDERS[args.agent]()
     env = create_env(42)
 
     value = grader_score(agent, env, args.episodes)
-    print(f"racing-line agent: {value:.3f}")
+    print(f"{args.agent} agent: {value:.3f}")
 
     if not args.save:
         print("dry run, pass --save to write models/model.obj")
