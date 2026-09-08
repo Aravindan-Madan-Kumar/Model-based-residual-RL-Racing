@@ -14,7 +14,7 @@ does, so each candidate recomputes the cheap forward-backward pass over a cached
 
 Usage::
 
-    pixi run python raceline/tune_es.py --random 300 --generations 20 --workers 4
+    pixi run python raceline/scripts/tune_es.py --random 300 --generations 20 --workers 4
 """
 
 import argparse
@@ -26,7 +26,7 @@ import time
 
 import numpy as np
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
@@ -36,8 +36,8 @@ os.environ.setdefault('MPLBACKEND', 'Agg')
 from raceline.controller import PARAM_NAMES, RacelineTracker  # noqa: E402
 from raceline.optimize import DEFAULT_CORRIDOR, build, velocity_profile  # noqa: E402
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-BEST_PATH = os.path.join(HERE, 'best_params.json')
+MODULE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BEST_PATH = os.path.join(MODULE_DIR, 'best_params.json')
 
 SEARCH_NAMES = PARAM_NAMES + ('a_max', 'a_accel', 'a_brake', 'smooth')
 

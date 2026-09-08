@@ -11,7 +11,7 @@
 #
 # One residual SAC run, parameterised through the environment:
 #
-#   sbatch --export=ALL,SEED=1,DECAY=200000,CHANNELS=2 residual_sac/job_claix_sector_run.sh
+#   sbatch --export=ALL,SEED=1,DECAY=200000,CHANNELS=2 residual_sac/slurm/job_claix_sector_run.sh
 #
 # A CPU partition on purpose. The environment is a numba vehicle model with no network in
 # its loop, and the policy is two 128-wide layers, so a GPU node measured 144 SPS against
@@ -42,11 +42,11 @@ printf '\n=== BPA3 sector residual SAC ===\n'
 echo "Job ${SLURM_JOB_ID}  Host $(hostname)"
 echo "seed ${SEED}  decay ${DECAY}  channels ${CHANNELS}  steps ${STEPS}"
 
-pixi run python -m py_compile agent_interface.py residual_sac/train_sector.py \
+pixi run python -m py_compile agent_interface.py residual_sac/scripts/train_sector.py \
     residual_sac/features_sector.py
 
 printf '\n=== Training ===\n'
-pixi run python residual_sac/train_sector.py \
+pixi run python residual_sac/scripts/train_sector.py \
     --seed "${SEED}" \
     --total-timesteps "${STEPS}" \
     --penalty-decay-steps "${DECAY}" \

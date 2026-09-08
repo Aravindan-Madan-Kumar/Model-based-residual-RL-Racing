@@ -41,7 +41,7 @@ PARAM_NAMES = (
     'k_in',     # apex-shift strength
 )
 
-# Tuned on track00 by pure_pursuit/tune_es.py; see pure_pursuit/RESULTS.md.
+# Tuned on track00 by pure_pursuit/scripts/tune_es.py; see pure_pursuit/RESULTS.md.
 DEFAULT_PARAMS = (
     0.4948805956840358,
     5.106832735968532,

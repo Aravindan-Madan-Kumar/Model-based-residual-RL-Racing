@@ -12,8 +12,8 @@
 #
 # Tune the sector controller with the racing line's shape as a search dimension.
 #
-#   sbatch raceline/job_claix_line.sh
-#   pixi run python raceline/line_report.py
+#   sbatch raceline/slurm/job_claix_line.sh
+#   pixi run python raceline/scripts/line_report.py
 #
 # Adds the corridor half-width to the parameter vector and refines the smoothing grid.
 # Those two set the line's shape between them, and neither was searched properly before:
@@ -54,7 +54,7 @@ echo "Job ${SLURM_ARRAY_JOB_ID}  Host $(hostname)  Workers ${WORKERS}"
 
 printf '\n=== Pre-flight checks ===\n'
 pixi run python -m py_compile agent_interface.py raceline/sector.py \
-    raceline/tune_sector.py
+    raceline/scripts/tune_sector.py
 pixi run python -c "
 from raceline.tune_sector import seed_vector, project, rollout_score
 from pure_pursuit.rollout import make_env
@@ -67,7 +67,7 @@ print('seed reproduces:', round(rollout_score(make_env(), v), 3))
 "
 
 printf '\n=== Tuning ===\n'
-pixi run python raceline/tune_sector.py \
+pixi run python raceline/scripts/tune_sector.py \
     --random "${RANDOM_SAMPLES}" \
     --generations "${GENERATIONS}" \
     --workers "${WORKERS}" \

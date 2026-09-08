@@ -16,7 +16,7 @@ submission rather than restarting.
 
 Usage::
 
-    pixi run python residual_sac/train_sector.py --seed 0 --total-timesteps 700000 \
+    pixi run python residual_sac/scripts/train_sector.py --seed 0 --total-timesteps 700000 \
         --penalty-decay-steps 300000 --device cuda --resume
 """
 
@@ -31,7 +31,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 

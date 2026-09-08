@@ -13,7 +13,7 @@ create and use separate scripts.
 
 ---
 
-Policy mathematics: ``pure_pursuit/controller.py``. Tuning: ``pure_pursuit/tune_es.py``.
+Policy mathematics: ``pure_pursuit/controller.py``. Tuning: ``pure_pursuit/scripts/tune_es.py``.
 This module defines only the ``Agent`` class and the two conversion functions.
 
 ``Agent`` and ``ResidualAgent`` are defined here rather than in the ``pure_pursuit`` or
@@ -355,19 +355,21 @@ class SectorResidualAgent(nn.Module):
     """
     Sector racing-line controller with a learned residual correction.
 
-    The residual acts on two interpretable channels rather than on the raw pedals, so a
-    zero residual reproduces :class:`SectorAgent` exactly:
+    The residual acts on interpretable channels rather than on the raw pedals, so a zero
+    residual reproduces :class:`SectorAgent` exactly:
 
     ==============  =====================================================================
     ``speed_bias``  offset on the reference speed [m/s]
     ``steer_bias``  steering correction, applied before the controller's own filter
+    ``apex_bias``   lateral shift of the aim point [m], third channel only
     ==============  =====================================================================
 
-    The lateral aim-point shift carried by :class:`ResidualAgent` is deliberately absent.
-    The line's shape is set by the smoothing weight and the corridor, both of which are
-    already searched, and the measured failure mode is tracking error rather than path
-    geometry, so a channel that moves the line sideways adds drift without addressing the
-    binding constraint.
+    Two channels is the default because the line's shape is already searched through the
+    smoothing weight and the corridor, and the measured failure mode is tracking error
+    rather than path geometry, so a channel that moves the line sideways risks adding
+    drift without addressing the binding constraint. It is an option rather than a
+    prohibition: ``channels=3`` restores the lateral shift, and whether it earns its
+    place is decided by the score of the run, not by this argument.
 
     Defined here for the same reason as the other agents: pickle records the defining
     module of every class it stores and the harness imports ``agent_interface`` alone.

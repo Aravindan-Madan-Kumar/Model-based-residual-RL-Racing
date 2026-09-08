@@ -1,11 +1,11 @@
 """Summarise the sector-controller ablation.
 
-Reads every ``best_sector_*.json`` produced by ``raceline/job_claix_ablation.sh`` and
+Reads every ``best_sector_*.json`` produced by ``raceline/slurm/job_claix_ablation.sh`` and
 reports what each feature contributes: the shortfall of the run without it against the
 full search. A negative contribution means the feature costs points and should be
 dropped.
 
-    pixi run python raceline/ablation_report.py
+    pixi run python raceline/scripts/ablation_report.py
 """
 
 import argparse
@@ -13,7 +13,7 @@ import glob
 import json
 import os
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+MODULE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASELINE = 92.235   # the tuned racing-line agent every variant is seeded from
 
 LABELS = {
@@ -39,7 +39,7 @@ def load_runs(directory):
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--dir', default=HERE)
+    p.add_argument('--dir', default=MODULE_DIR)
     p.add_argument('--baseline', type=float, default=BASELINE)
     return p.parse_args()
 

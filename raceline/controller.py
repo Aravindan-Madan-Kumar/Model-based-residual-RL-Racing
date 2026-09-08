@@ -40,7 +40,7 @@ PARAM_NAMES = (
     'k_lat',      # cross-track correction gain, feeding back offset from the line
 )
 
-# Tuned on track00 by raceline/tune_es.py alongside the profile limits below.
+# Tuned on track00 by raceline/scripts/tune_es.py alongside the profile limits below.
 DEFAULT_PARAMS = (
     0.647734,   # k_ld
     5.215461,   # ld0

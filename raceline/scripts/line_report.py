@@ -1,9 +1,9 @@
 """Summarise the multi-seed line search.
 
-Reads every ``best_line_seed*.json`` from ``raceline/job_claix_line.sh`` and reports what
+Reads every ``best_line_seed*.json`` from ``raceline/slurm/job_claix_line.sh`` and reports what
 each seed found, with the line parameters that produced it.
 
-    pixi run python raceline/line_report.py
+    pixi run python raceline/scripts/line_report.py
 """
 
 import argparse
@@ -11,7 +11,7 @@ import glob
 import json
 import os
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+MODULE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def load_runs(directory):
@@ -29,7 +29,7 @@ def load_runs(directory):
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--dir', default=HERE)
+    p.add_argument('--dir', default=MODULE_DIR)
     return p.parse_args()
 
 

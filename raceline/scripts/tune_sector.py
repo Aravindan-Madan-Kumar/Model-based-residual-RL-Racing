@@ -1,6 +1,6 @@
 """Tune the sector controller on the fixed track by black-box search.
 
-Same two-phase scheme as :mod:`raceline.tune_es` - random search for a basin, then a
+Same two-phase scheme as :mod:`raceline.scripts.tune_es` - random search for a basin, then a
 ``(mu, lambda)`` evolution strategy - over the 34 parameters of
 :mod:`raceline.sector`.
 
@@ -13,7 +13,7 @@ parallelises across processes and gains nothing from a GPU.
 
 Usage::
 
-    pixi run python raceline/tune_sector.py --random 600 --generations 60 --workers 4
+    pixi run python raceline/scripts/tune_sector.py --random 600 --generations 60 --workers 4
 """
 
 import argparse
@@ -25,7 +25,7 @@ import time
 
 import numpy as np
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
@@ -35,9 +35,9 @@ os.environ.setdefault('MPLBACKEND', 'Agg')
 from raceline.sector import (N_SECTORS, PARAM_NAMES, SectorTracker,  # noqa: E402
                              build_profile)
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-BEST_PATH = os.path.join(HERE, 'best_sector.json')
-SEED_PATH = os.path.join(HERE, 'best_params.json')
+MODULE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BEST_PATH = os.path.join(MODULE_DIR, 'best_sector.json')
+SEED_PATH = os.path.join(MODULE_DIR, 'best_params.json')
 
 # Only the smoothing weight is quantised, because it is the one parameter that changes
 # the line and so triggers a least-squares solve. The index is looked up rather than
@@ -313,14 +313,14 @@ def main():
         raise SystemExit(f"unknown features {unknown}, expected any of {list(ABLATIONS)}")
 
     tag = 'full' if not disabled else 'no_' + '_'.join(disabled)
-    out = args.out or os.path.join(HERE, f'best_sector_{tag}.json')
+    out = args.out or os.path.join(MODULE_DIR, f'best_sector_{tag}.json')
 
     rng = np.random.default_rng(args.seed)
     start = time.time()
 
     seed_point = seed_vector()
     if seed_point is None:
-        raise SystemExit(f"no seed at {SEED_PATH}, run raceline/tune_es.py first")
+        raise SystemExit(f"no seed at {SEED_PATH}, run raceline/scripts/tune_es.py first")
     seed_point = project(seed_point, disabled)
 
     print(f"variant: {tag}"

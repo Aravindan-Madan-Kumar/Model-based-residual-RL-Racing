@@ -13,7 +13,7 @@
 #
 # Residual SAC on top of the 97.667 sector controller, five seeds.
 #
-#   sbatch residual_sac/job_claix_sector.sh
+#   sbatch residual_sac/slurm/job_claix_sector.sh
 #
 # Tasks 0 and 1 release the leash over 200k steps, tasks 2-4 over 300k. The 300k figure
 # is the one already measured not to collapse; 200k gives the policy more of its budget
@@ -59,11 +59,11 @@ nvidia-smi || true
 pixi run python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())"
 
 printf '\n=== Pre-flight checks ===\n'
-pixi run python -m py_compile agent_interface.py residual_sac/train_sector.py \
+pixi run python -m py_compile agent_interface.py residual_sac/scripts/train_sector.py \
     residual_sac/features_sector.py
 
 printf '\n=== Training ===\n'
-pixi run python residual_sac/train_sector.py \
+pixi run python residual_sac/scripts/train_sector.py \
     --seed "${SLURM_ARRAY_TASK_ID}" \
     --total-timesteps "${STEPS}" \
     --penalty-decay-steps "${DECAY}" \

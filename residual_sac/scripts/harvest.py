@@ -2,10 +2,10 @@
 
 Scores every ``best.obj`` through the grading path, keeps the highest, and writes it to
 ``models/model.obj`` only if it beats what is already installed. Runs the same isolated
-unpickle check as ``raceline/install.py``: the artifact must resolve through
+unpickle check as ``raceline/scripts/install.py``: the artifact must resolve through
 ``agent_interface`` alone and carry no CUDA storages.
 
-    pixi run python residual_sac/harvest.py --save
+    pixi run python residual_sac/scripts/harvest.py --save
 """
 
 import argparse
@@ -16,7 +16,7 @@ import sys
 
 import numpy as np
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
@@ -24,7 +24,7 @@ os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
 os.environ.setdefault('MPLBACKEND', 'Agg')
 
 from agent_interface import convert_action, convert_obs  # noqa: E402
-from raceline.install import check_isolated_unpickle  # noqa: E402
+from raceline.scripts.install import check_isolated_unpickle  # noqa: E402
 from util import create_env, load_model, save_model  # noqa: E402
 
 MODEL_PATH = os.path.join(REPO_ROOT, 'models', 'model.obj')

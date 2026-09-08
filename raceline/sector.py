@@ -73,7 +73,7 @@ N_LAUNCH = len(LAUNCH_NAMES)
 N_PROFILE = len(PROFILE_NAMES)
 
 
-# Tuned on the fixed evaluation track by ``raceline/tune_sector.py``. Selected from the
+# Tuned on the fixed evaluation track by ``raceline/scripts/tune_sector.py``. Selected from the
 # ablation array: the curvature-scheduled lookahead was the one feature whose removal
 # improved the search, so ``k_ld_curve`` is held at zero here.
 DEFAULT_PARAMS = (

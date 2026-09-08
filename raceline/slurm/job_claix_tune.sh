@@ -11,7 +11,7 @@
 #
 # Black-box tuning of the sector controller.
 #
-#   sbatch raceline/job_claix_tune.sh
+#   sbatch raceline/slurm/job_claix_tune.sh
 #
 # A CPU partition on purpose. Each evaluation is a Box2D episode with no network in the
 # loop, so there is nothing for a GPU to do, and c23g would bill 24 core-h per GPU-h to
@@ -50,7 +50,7 @@ pixi run python --version
 
 printf '\n=== Pre-flight checks ===\n'
 pixi run python -m py_compile agent_interface.py raceline/sector.py \
-    raceline/tune_sector.py
+    raceline/scripts/tune_sector.py
 pixi run python -c "
 from raceline.tune_sector import seed_vector, rollout_score
 from pure_pursuit.rollout import make_env
@@ -58,7 +58,7 @@ print('seed reproduces:', round(rollout_score(make_env(), seed_vector()), 3))
 "
 
 printf '\n=== Tuning ===\n'
-pixi run python raceline/tune_sector.py \
+pixi run python raceline/scripts/tune_sector.py \
     --random "${RANDOM_SAMPLES}" \
     --generations "${GENERATIONS}" \
     --workers "${WORKERS}" \

@@ -4,7 +4,7 @@ Rolls each agent through the grading path, records position, speed and reward pe
 and attributes every step to a sector by the nearest point on the sector controller's
 racing line, so all three are partitioned by the same geometry.
 
-    pixi run python raceline/plot_compare.py
+    pixi run python raceline/scripts/plot_compare.py
 """
 
 import argparse
@@ -13,7 +13,7 @@ import sys
 
 import numpy as np
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
 
 from agent_interface import convert_action, convert_obs  # noqa: E402
-from raceline.install import make_agent, make_sector_agent  # noqa: E402
+from raceline.scripts.install import make_agent, make_sector_agent  # noqa: E402
 from raceline.sector import N_SECTORS, TOP_SPEED  # noqa: E402
 from raceline.track_data import load as load_track  # noqa: E402
 from util import create_env, load_model  # noqa: E402

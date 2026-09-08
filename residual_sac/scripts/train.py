@@ -11,7 +11,7 @@ updates and the run collapses.
 
 Usage::
 
-    pixi run python residual_sac/train.py --seed 0 --total-timesteps 1000000 --device cuda
+    pixi run python residual_sac/scripts/train.py --seed 0 --total-timesteps 1000000 --device cuda
 """
 
 import argparse
@@ -25,7 +25,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 

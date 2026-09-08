@@ -12,8 +12,8 @@
 #
 # Ablation over the features the sector controller adds on top of the racing-line agent.
 #
-#   sbatch raceline/job_claix_ablation.sh
-#   pixi run python raceline/ablation_report.py
+#   sbatch raceline/slurm/job_claix_ablation.sh
+#   pixi run python raceline/scripts/ablation_report.py
 #
 # Task 0 tunes everything. Tasks 1-5 each neutralise one feature and tune the rest, so
 # the shortfall against task 0 is that feature's contribution. Every variant is seeded
@@ -60,7 +60,7 @@ echo "Job ${SLURM_ARRAY_JOB_ID}  Host $(hostname)  Workers ${WORKERS}"
 
 printf '\n=== Pre-flight checks ===\n'
 pixi run python -m py_compile agent_interface.py raceline/sector.py \
-    raceline/tune_sector.py
+    raceline/scripts/tune_sector.py
 pixi run python -c "
 from raceline.tune_sector import seed_vector, rollout_score
 from pure_pursuit.rollout import make_env
@@ -68,7 +68,7 @@ print('seed reproduces:', round(rollout_score(make_env(), seed_vector()), 3))
 "
 
 printf '\n=== Tuning ===\n'
-pixi run python raceline/tune_sector.py \
+pixi run python raceline/scripts/tune_sector.py \
     --random "${RANDOM_SAMPLES}" \
     --generations "${GENERATIONS}" \
     --workers "${WORKERS}" \

@@ -3,7 +3,7 @@
 Also runs the two checks a local ``try_agent.py`` cannot catch: that the pickle resolves
 through ``agent_interface`` alone, and that it carries no CUDA storages.
 
-    pixi run python raceline/install.py --save
+    pixi run python raceline/scripts/install.py --save
 """
 
 import argparse
@@ -13,7 +13,7 @@ import sys
 
 import numpy as np
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
