@@ -43,8 +43,14 @@ SEED_PATH = os.path.join(HERE, 'best_params.json')
 # the line and so triggers a least-squares solve. The index is looked up rather than
 # written down: hard-coding it once already pointed at the wrong parameter, which
 # silently disabled the line cache.
-SMOOTH_STEP = 0.05
-SMOOTH_INDEX = PARAM_NAMES.index('smooth')
+# Both parameters that change the line are quantised, so the solve cache can hit. The
+# smoothing step is finer than the corridor's: smoothing sets the width of the solution
+# on its own, and the corridor only binds once smoothing has been relaxed far enough to
+# let the line reach it.
+SMOOTH_STEP = 0.025
+CORRIDOR_STEP = 0.05
+LINE_STEPS = {PARAM_NAMES.index('smooth'): SMOOTH_STEP,
+              PARAM_NAMES.index('corridor'): CORRIDOR_STEP}
 
 
 def _index(name):
@@ -108,20 +114,35 @@ _LAUNCH_HIGH = [14.0, 1.00, 1.00]
 _PROFILE_LOW = [8.5, 3.0, 0.0]
 _PROFILE_HIGH = [12.5, 7.0, 0.60]
 
+#                     corridor half-width [m]. The upper bound is the track edge, where
+#                     the car's centre crossing ends the episode; the cone-clearing value
+#                     is 2.42, so the range spans both sides of it and the search decides
+#                     whether cone contact is worth its price.
+_LINE_LOW = [1.80]
+_LINE_HIGH = [3.90]
+
 LOW = np.array(_TRACKER_LOW + _LAUNCH_LOW + _PROFILE_LOW
-               + [0.60] * N_SECTORS + [4.0] * N_SECTORS)
+               + [0.60] * N_SECTORS + [4.0] * N_SECTORS + _LINE_LOW)
 HIGH = np.array(_TRACKER_HIGH + _LAUNCH_HIGH + _PROFILE_HIGH
-                + [1.45] * N_SECTORS + [13.0] * N_SECTORS)
+                + [1.45] * N_SECTORS + [13.0] * N_SECTORS + _LINE_HIGH)
 
 _STATE = None
 
 
 def seed_vector():
     """
-    Build a starting point from the tuned racing-line agent.
+    Build a starting point.
 
-    :return: (34,) parameter vector, or ``None`` if that agent has not been tuned
+    Prefers the installed sector defaults, so a search cannot regress on what is already
+    shipped, and falls back to lifting the tuned racing-line agent into this parameter
+    space for the case where no sector agent exists yet.
+
+    :return: parameter vector, or ``None`` if neither agent has been tuned
     """
+    from raceline.sector import DEFAULT_PARAMS
+    if DEFAULT_PARAMS is not None:
+        return np.clip(np.array(DEFAULT_PARAMS, dtype=float), LOW, HIGH)
+
     if not os.path.exists(SEED_PATH):
         return None
     b = json.load(open(SEED_PATH))
@@ -135,14 +156,16 @@ def seed_vector():
     profile = [b['a_max'], b['a_accel'], b['smooth']]
     # Per-sector scaling starts neutral so the seed reproduces the racing-line agent
     # exactly rather than approximately.
+    from raceline.optimize import DEFAULT_CORRIDOR
     return np.clip(np.array(tracker + launch + profile
                             + [1.0] * N_SECTORS
-                            + [b['a_brake']] * N_SECTORS), LOW, HIGH)
+                            + [b['a_brake']] * N_SECTORS
+                            + [DEFAULT_CORRIDOR]), LOW, HIGH)
 
 
 def project(candidate, disabled=()):
     """
-    Round the smoothing weight and apply any ablation constraints.
+    Round the line parameters onto their grids and apply any ablation constraints.
 
     Applied everywhere a candidate is used, so a disabled feature cannot creep back in
     through the seed, the reported best, or the saved parameters.
@@ -151,7 +174,8 @@ def project(candidate, disabled=()):
     :return: a projected copy
     """
     c = np.array(candidate, dtype=float)
-    c[SMOOTH_INDEX] = round(c[SMOOTH_INDEX] / SMOOTH_STEP) * SMOOTH_STEP
+    for i, step in LINE_STEPS.items():
+        c[i] = round(c[i] / step) * step
     for name in disabled:
         c = ABLATIONS[name](c)
     return c
