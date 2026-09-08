@@ -24,14 +24,16 @@ class ResidualActor(nn.Module):
 
     :param feature_dim: input width
     :param hidden: width of both hidden layers
+    :param action_dim: number of residual channels. Defaults to the pure-pursuit
+        residual's three, so previously saved artifacts rebuild unchanged.
     """
 
-    def __init__(self, feature_dim=FEATURE_DIM, hidden=128):
+    def __init__(self, feature_dim=FEATURE_DIM, hidden=128, action_dim=RESIDUAL_DIM):
         super().__init__()
         self.fc1 = nn.Linear(feature_dim, hidden)
         self.fc2 = nn.Linear(hidden, hidden)
-        self.fc_mean = nn.Linear(hidden, RESIDUAL_DIM)
-        self.fc_logstd = nn.Linear(hidden, RESIDUAL_DIM)
+        self.fc_mean = nn.Linear(hidden, action_dim)
+        self.fc_logstd = nn.Linear(hidden, action_dim)
         nn.init.zeros_(self.fc_mean.weight)
         nn.init.zeros_(self.fc_mean.bias)
 
