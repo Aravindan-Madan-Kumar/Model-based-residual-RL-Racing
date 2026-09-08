@@ -1,5 +1,7 @@
 # BPA III - Car Racing Challenge
 
+![The trained agent driving the evaluation track](assets/agent_race.gif)
+
 This repository provides the frame for your submissions for the **RLLBC BPA III Car Racing Challenge**.
 To get started you can **fork this repository**. Just make sure that the forked repository is **private**.
 
