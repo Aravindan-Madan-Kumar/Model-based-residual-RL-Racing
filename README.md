@@ -177,10 +177,6 @@ own checkpoint. The general shape every agent in this repo follows:
    artifact differs from what the grader will see - stop and find out why before
    pushing.
 
-6. **Commit `models/model.obj` and push to `main`.** That's the entire submission
-   surface; the grader picks up pushes to `main` on your private fork periodically and
-   scores them the same way `try_agent.py` just did.
-
 ## Repository layout
 
 | Path | What it is |
