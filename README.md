@@ -65,8 +65,8 @@ The path here, in order:
 ## Setup
 
 ```bash
-git clone https://github.com/Aravindan-Madan-Kumar/RL-Challenge.git
-cd RL_Challenge
+git clone https://github.com/Aravindan-Madan-Kumar/Model-based-residual-RL-Racing.git
+cd Model-based-residual-RL-Racing
 pixi install --frozen   # reproduces pixi.lock 
 pixi shell
 ```
